@@ -55,11 +55,15 @@ def get_llm_from_env(path_to_env):
         return ChatOpenAI(
             model_name=os.getenv("LOCAL_MODEL_NAME", "local-model"),
             openai_api_base=os.getenv("LOCAL_BASE_URL", "http://localhost:1234/v1"),
-            openai_api_key="not-needed",  # LMStudio doesn't require an API key
+            openai_api_key=os.getenv("LOCAL_API_KEY", "not-needed"),  # Optional API key for local models
             temperature=float(os.getenv("LOCAL_TEMPERATURE", "0.7"))
         )
     else:
-        raise ValueError("Invalid or unsupported PROVIDER in .env")
+        supported = ["Azure OpenAI", "OpenAI", "Anthropic", "Google", "Local"]
+        raise ValueError(
+            f"Invalid or unsupported PROVIDER in .env: '{provider}'\n"
+            f"Supported providers: {', '.join(supported)}"
+        )
 
 # -------------------------------
 

@@ -1,3 +1,4 @@
+# syntax=docker/dockerfile:1.4
 # ==============================================================================
 # CellAtria Docker Image
 # ==============================================================================
@@ -50,8 +51,11 @@ ENV IMAGE_TREE_STATE="${TREE_STATE}"
 ENV IMAGE_META_PATH=/usr/local/share/cellatria/image-meta.json
 
 # -----------------------------------
-# System package installation
-RUN apt-get update --fix-missing && \ 
+# System package installation with cache mount for faster rebuilds
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked \
+    rm -f /etc/apt/apt.conf.d/docker-clean && \
+    apt-get update --fix-missing && \ 
 		apt-get install -y --no-install-recommends --fix-missing \
 		pkgconf \
 		build-essential \
@@ -117,35 +121,48 @@ RUN apt-get update --fix-missing && \
         ninja-build \
         clang \ 
         clang-tidy \
-        && \
-        apt-get clean && \
-        rm -rf /var/lib/apt/lists/*
+        pandoc
 # -----------------------------------
-# Install Pandoc for R Markdown document conversion and report generation
-RUN apt-get update && apt-get install -y pandoc
 # -----------------------------------
-# Python Package Installation
-RUN pip install --no-cache-dir --upgrade setuptools wheel
-RUN pip install --no-cache-dir numpy pandas scipy
-RUN pip install --no-cache-dir plotly matplotlib seaborn anndata scanpy scvi-tools tqdm scikit-learn h5py networkx scrublet nose annoy 'zarr<3'
-RUN pip install --no-cache-dir torch torchvision torchaudio torchsummary torchopt entmax
-RUN pip install --no-cache-dir harmonypy igraph leidenalg celltypist scimilarity
-RUN pip install --no-cache-dir fa2_modified
-RUN pip install --no-cache-dir --upgrade openai langchain langchainhub langchain-community langchain-openai langchain-core langchain-anthropic
-RUN pip install --no-cache-dir --upgrade accelerate gradio langgraph PyMuPDF GEOparse beautifulsoup4 google-generativeai
+# Python Package Installation with pip cache mount for faster rebuilds
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install --upgrade setuptools wheel
+
+# Core scientific computing (foundational, changes rarely)
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install numpy pandas scipy
+
+# ML and single-cell analysis packages (medium frequency changes)
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install plotly matplotlib seaborn anndata scanpy scvi-tools tqdm \
+    scikit-learn h5py networkx scrublet nose annoy 'zarr<3'
+
+# PyTorch ecosystem (large, stable)
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install torch torchvision torchaudio torchsummary torchopt entmax
+
+# Single-cell specific tools
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install harmonypy igraph leidenalg celltypist scimilarity fa2_modified
+
+# LLM and agentic tools (may update more frequently)
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install --upgrade openai langchain langchainhub langchain-community \
+    langchain-openai langchain-core langchain-anthropic
+
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install --upgrade accelerate gradio langgraph PyMuPDF GEOparse \
+    beautifulsoup4 google-generativeai
 # -----------------------------------
 # R Installation and Configuration
-# Update indices
-RUN apt update -qq
-# Install two helper packages
-RUN apt install apt-transport-https software-properties-common dirmngr
-RUN curl -sSL \
-'http://keyserver.ubuntu.com/pks/lookup?op=get&search=0xE298A3A825C0D65DFD57CBB651716619E084DAB9' \
-| apt-key add -
-RUN wget -qO- https://cloud.r-project.org/bin/linux/ubuntu/marutter_pubkey.asc | tee -a /etc/apt/trusted.gpg.d/cran_ubuntu_key.asc
-# add the R repo from CRAN -- adjust 'jammy'
-RUN add-apt-repository 'deb http://cloud.r-project.org/bin/linux/ubuntu jammy-cran40/'
-RUN apt-get update && \
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked \
+    apt update -qq && \
+    apt install -y apt-transport-https software-properties-common dirmngr && \
+    curl -sSL 'http://keyserver.ubuntu.com/pks/lookup?op=get&search=0xE298A3A825C0D65DFD57CBB651716619E084DAB9' | apt-key add - && \
+    wget -qO- https://cloud.r-project.org/bin/linux/ubuntu/marutter_pubkey.asc | tee -a /etc/apt/trusted.gpg.d/cran_ubuntu_key.asc && \
+    add-apt-repository 'deb http://cloud.r-project.org/bin/linux/ubuntu jammy-cran40/' && \
+    apt-get update && \
     apt-get upgrade -y && \
     apt-get install -y \
     r-base \
@@ -155,7 +172,9 @@ RUN apt-get update && \
 # -----------------------------------
 # Install R packages
 RUN Rscript -e "options(repos='http://cran.rstudio.com/'); install.packages('devtools', clean=TRUE)"
+
 RUN Rscript -e "options(repos='http://cran.rstudio.com/'); install.packages(c('progress','Rcpp','Rcpp11','RcppAnnoy'), clean=TRUE)"
+
 ARG R_DEPS="c('ggplot2', 'dplyr', 'gtools', 'grid', 'gridtext', \
                 'jsonlite', 'kableExtra', 'DT', 'scales','RColorBrewer', \
                 'plotly', 'visNetwork', 'ggrepel', 'gtools', 'viridis', \
