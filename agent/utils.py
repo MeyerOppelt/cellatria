@@ -16,7 +16,7 @@ from typing import List, Dict, Any, TypedDict, Literal, Optional
 from langchain_openai import AzureChatOpenAI, ChatOpenAI
 from langchain_anthropic import ChatAnthropic  
 from dotenv import load_dotenv
-import google.generativeai as genai
+import google.genai as genai
 
 # -------------------------------
 
@@ -45,7 +45,7 @@ def get_llm_from_env(path_to_env):
     elif provider == "Anthropic":
         return ChatAnthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
     elif provider == "Google":
-        # Example using google.generativeai (Gemini)        
+        # Example using google.genai (Gemini)        
         genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
         model_name = os.getenv("GOOGLE_MODEL", "gemini-pro")
         # You may need to adjust this based on your actual Gemini integration

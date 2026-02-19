@@ -193,7 +193,7 @@ def create_cellatria(env_path):
 
     # -------------------------------
     # Interface
-    with gr.Blocks(theme=chatbot_theme, css=gr_css) as cellatria:
+    with gr.Blocks() as cellatria:
         gr.HTML("""
             <div style='text-align: center; margin-bottom: 0;'>
                 <h1 style='margin-bottom: 0.2em;'>Welcome to cellAtria</h1>
@@ -205,9 +205,7 @@ def create_cellatria(env_path):
             label="Welcome to cellAtria",
             interactive=False,
             show_label=False,
-            show_download_button=False,
             container=True,
-            show_fullscreen_button=False,
             height=125, 
         )
 
