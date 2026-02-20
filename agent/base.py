@@ -235,9 +235,12 @@ def create_cellatria(env_path):
             
             import asyncio
             
+            # Track whether we got actual LLM content
+            got_llm_content = False
+            
             # Helper to run async streaming
             async def process_stream():
-                nonlocal accumulated_text, backend_log
+                nonlocal accumulated_text, backend_log, got_llm_content
                 
                 async for event in graph.astream_events(
                     {"messages": messages}, 
@@ -254,6 +257,7 @@ def create_cellatria(env_path):
                             if accumulated_text.startswith("🔧 Running tool:"):
                                 accumulated_text = ""
                             accumulated_text += chunk.content
+                            got_llm_content = True
                             # Yield streaming update
                             yield accumulated_text
                     
@@ -266,6 +270,15 @@ def create_cellatria(env_path):
                         accumulated_text = f"🔧 Running tool: {tool_name}..."
                         # Yield status update
                         yield accumulated_text
+                    
+                    # Handle tool completion
+                    elif kind == "on_tool_end":
+                        tool_name = event.get("name", "unknown")
+                        log_status(f"✅ Tool completed: {tool_name}")
+                        # Clear the tool status, wait for LLM response
+                        if accumulated_text.startswith("🔧 Running tool:"):
+                            accumulated_text = "🤔 Thinking..."
+                            yield accumulated_text
                     
                     # Log chat model completion
                     elif kind == "on_chat_model_end":
@@ -324,9 +337,9 @@ def create_cellatria(env_path):
             finally:
                 loop.close()
             
-            # If streaming didn't produce results, get final state from graph
-            if not stream_had_results or not accumulated_text:
-                log_status("⚠️ No streaming results, fetching final state from graph...")
+            # If we didn't get LLM content from streaming, fetch final state from graph
+            if not got_llm_content or accumulated_text.startswith("🔧 Running tool:") or accumulated_text == "🤔 Thinking...":
+                log_status("⚠️ No LLM content from stream, fetching final state from graph...")
                 try:
                     final_state = graph.get_state(config)
                     if final_state and final_state.values.get("messages"):
