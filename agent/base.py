@@ -214,7 +214,6 @@ def create_cellatria(env_path):
             value=[initial_message],
             label="cellAtria Agent",
             show_label=False,
-            type="messages",
             height=500,
             show_copy_button=False,
             autoscroll=True,
