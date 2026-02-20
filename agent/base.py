@@ -73,19 +73,102 @@ def create_cellatria(env_path):
     graph_builder.add_edge("tools", "chatbot")
     graph_builder.add_conditional_edges("chatbot", tools_condition)
     graph_builder.set_entry_point("chatbot")
+    
+    # Use MemorySaver for runtime, but persist to JSON file
     graph = graph_builder.compile(checkpointer=MemorySaver())
+    
+    # File-based persistence for chat history
+    history_file = "/tmp/cellatria_chat_history.json"
+    log_status(f"💾 Using JSON file for chat persistence: {history_file}")
 
     # -------------------------------
     # Chat Handler
-    # Persistent thread ID for LangGraph
-    chat_thread_id = str(uuid.uuid4())
+    # Persistent thread ID stored in file
+    thread_id_file = "/tmp/cellatria_thread_id.txt"
+    try:
+        if os.path.exists(thread_id_file):
+            with open(thread_id_file, "r") as f:
+                thread_id = f.read().strip()
+                log_status(f"📂 Loaded existing thread ID: {thread_id[:8]}...")
+        else:
+            thread_id = str(uuid.uuid4())
+            with open(thread_id_file, "w") as f:
+                f.write(thread_id)
+            log_status(f"🆕 Created new thread ID: {thread_id[:8]}...")
+    except Exception as e:
+        log_status(f"⚠️ Error with thread ID file: {e}")
+        thread_id = str(uuid.uuid4())
+    
+    thread_state = {"id": thread_id}
+    
+    def load_history_from_file():
+        """Load chat history from JSON file"""
+        try:
+            if os.path.exists(history_file):
+                with open(history_file, "r") as f:
+                    data = json.load(f)
+                    file_thread_id = data.get("thread_id")
+                    # Validate thread ID matches
+                    if file_thread_id == thread_state["id"]:
+                        history = data.get("history", [initial_message])
+                        log_status(f"📂 Loaded {len(history)-1} messages from file (thread: {file_thread_id[:8]}...)")
+                        return history
+                    else:
+                        log_status(f"⚠️ Thread ID mismatch: file={file_thread_id[:8] if file_thread_id else 'None'}... current={thread_state['id'][:8]}...")
+            else:
+                log_status(f"ℹ️ History file does not exist yet: {history_file}")
+        except Exception as e:
+            log_status(f"⚠️ Could not load history from file: {str(e)}")
+            log_status(traceback.format_exc())
+        
+        return [initial_message]
+    
+    def save_history_to_file(history):
+        """Save chat history to JSON file"""
+        try:
+            if not history:
+                log_status("⚠️ History is empty, not saving")
+                return
+            data = {
+                "thread_id": thread_state["id"],
+                "history": history,
+                "timestamp": str(uuid.uuid1())
+            }
+            with open(history_file, "w") as f:
+                json.dump(data, f, indent=2)
+            log_status(f"💾 Saved {len(history)-1} messages to file: {history_file}")
+        except Exception as e:
+            log_status(f"⚠️ Error saving history to file: {str(e)}")
+            log_status(traceback.format_exc())
+    
+    def clear_chat():
+        """Clear chat history and start new session"""
+        thread_state["id"] = str(uuid.uuid4())
+        # Save new thread ID to file
+        try:
+            with open(thread_id_file, "w") as f:
+                f.write(thread_state["id"])
+        except Exception as e:
+            log_status(f"⚠️ Error saving thread ID: {e}")
+        
+        # Clear the log file
+        try:
+            open("/tmp/cellatria_log.txt", "w").close()
+        except Exception as e:
+            log_status(f"⚠️ Error clearing log: {e}")
+        
+        log_status(f"🗑️ Chat cleared. New session started: {thread_state['id'][:8]}...")
+        return [initial_message], [initial_message], "", None, "Chat history cleared."
     
     def gr_block_fn(user_input, pdf_file, history):
         messages = []
 
-        # Ensure initial message is included only once
-        if not history:
-            history = [initial_message]
+        # Load history from file if client state is empty/reset
+        if not history or history == [initial_message]:
+            loaded_history = load_history_from_file()
+            if len(loaded_history) > 1:  # More than just initial message
+                history = loaded_history
+                log_status(f"📥 Loaded {len(history)-1} messages from file")
 
         log_status("🟢 New interaction started.")
 
@@ -109,7 +192,7 @@ def create_cellatria(env_path):
 
         # Prepare config
         config: RunnableConfig = {
-            "configurable": {"thread_id": chat_thread_id},
+            "configurable": {"thread_id": thread_state["id"]},
             "recursion_limit": 1000
         }
 
@@ -167,14 +250,22 @@ def create_cellatria(env_path):
                     if kind == "on_chat_model_stream":
                         chunk = event.get("data", {}).get("chunk")
                         if chunk and hasattr(chunk, "content") and chunk.content:
+                            # If coming from tool execution, reset first
+                            if accumulated_text.startswith("🔧 Running tool:"):
+                                accumulated_text = ""
                             accumulated_text += chunk.content
                             # Yield streaming update
                             yield accumulated_text
                     
-                    # Log tool usage
+                    # Log tool usage and show which tool is running
                     elif kind == "on_tool_start":
                         tool_name = event.get("name", "unknown")
                         backend_log.append(f"**Step:** `tools`\n**Tool:** `{tool_name}`")
+                        log_status(f"🔧 Tool started: {tool_name}")
+                        # Show tool running status
+                        accumulated_text = f"🔧 Running tool: {tool_name}..."
+                        # Yield status update
+                        yield accumulated_text
                     
                     # Log chat model completion
                     elif kind == "on_chat_model_end":
@@ -193,15 +284,20 @@ def create_cellatria(env_path):
                                 ]
                                 backend_log.append("\n".join([s for s in summary if s]))
             
-            # Run async generator and yield results
+            # Run async generator and yield results to Gradio
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
             try:
+                # Create async generator
                 async_gen = process_stream()
+                
+                # Process each item as it arrives
                 while True:
                     try:
+                        # Get next item from async generator
                         partial_text = loop.run_until_complete(async_gen.__anext__())
-                        # Yield the update to Gradio
+                        
+                        # Yield the update to Gradio immediately
                         yield (
                             history + [
                                 {"role": "user", "content": user_input},
@@ -216,6 +312,10 @@ def create_cellatria(env_path):
                             "\n\n".join(backend_log)
                         )
                     except StopAsyncIteration:
+                        # Generator is exhausted
+                        break
+                    except Exception as stream_error:
+                        log_status(f"⚠️ Stream error: {str(stream_error)}")
                         break
             finally:
                 loop.close()
@@ -255,6 +355,11 @@ def create_cellatria(env_path):
     open("/tmp/cellatria_log.txt", "w").close()  # clears the log file
 
     # -------------------------------
+    # Load initial history from file (for page refreshes)
+    initial_history = load_history_from_file()
+    history_info = f"💾 Restored {len(initial_history)-1} previous message(s) from file" if len(initial_history) > 1 else ""
+    
+    # -------------------------------
     # Interface
     with gr.Blocks() as cellatria:
         gr.HTML("""
@@ -263,6 +368,11 @@ def create_cellatria(env_path):
                 <h3 style='margin-top: 0.2em;'>Agentic Triage of Regulated single cell data Ingestion and Analysis</h3>
             </div>
         """)
+        
+        # Show history restore info if applicable
+        if history_info:
+            gr.Markdown(f"_{history_info}_", elem_id="history_info")
+        
         gr.Image(
             value=os.path.join(base_path, "cellatria_header.png"),
             label="Welcome to cellAtria",
@@ -272,9 +382,9 @@ def create_cellatria(env_path):
             height=125, 
         )
 
-        # Chat Interface
+        # Chat Interface - load from file on startup
         chatbot = gr.Chatbot(
-            value=[initial_message],  # type: ignore[arg-type]
+            value=initial_history,  # type: ignore[arg-type]
             label="cellAtria Agent",
             show_label=False,
             height=500,
@@ -291,25 +401,58 @@ def create_cellatria(env_path):
                     submit_btn = gr.Button("Submit Prompt/PDF", variant="primary")
             with gr.Column(scale=2):
                 log_viewer = gr.Textbox(label="Live Logs", lines=12, interactive=False, elem_id="log_viewer_aes")
+        
+        # Clear chat button
+        with gr.Row():
+            with gr.Column(scale=9):
+                pass  # Spacer
+            with gr.Column(scale=1):
+                clear_btn = gr.Button("🗑️ Clear Chat", variant="secondary", size="sm")
 
-
-        # Hidden state to maintain chat memory
-        state = gr.State([initial_message])
+        # Hidden state to maintain chat memory - initialize with loaded history
+        state = gr.State(initial_history)
   
         # --- Backend Panel ---
         with gr.Accordion("Agent Backend", open=False, elem_id="agent_backend_panel"):
             agent_backend_md = gr.Markdown("No agent activity yet.", elem_id="agent_backend_md")
 
-        # Bind inputs to gr_block_fn
+        # Bind inputs to gr_block_fn (Gradio 6.x auto-detects generators for streaming)
         user_input.submit(
             fn=gr_block_fn,
             inputs=[user_input, pdf_upload, state],
             outputs=[chatbot, user_input, pdf_upload, state, agent_backend_md]
+        ).then(
+            fn=save_history_to_file,
+            inputs=[state],
+            outputs=[]
         )
         submit_btn.click(
             fn=gr_block_fn,
             inputs=[user_input, pdf_upload, state],
             outputs=[chatbot, user_input, pdf_upload, state, agent_backend_md]
+        ).then(
+            fn=save_history_to_file,
+            inputs=[state],
+            outputs=[]
+        )
+        
+        # Load history from file on page load/refresh
+        def load_on_startup():
+            """Load history when page loads"""
+            loaded = load_history_from_file()
+            return loaded, loaded
+        
+        cellatria.load(
+            fn=load_on_startup,
+            inputs=[],
+            outputs=[chatbot, state]
+        )
+        
+        # Clear chat button
+        clear_btn.click(
+            fn=clear_chat,
+            inputs=[],
+            outputs=[chatbot, state, user_input, pdf_upload, agent_backend_md]
         )
 
         # --- Terminal Panel ---
@@ -372,6 +515,9 @@ def create_cellatria(env_path):
             inputs=[],
             outputs=[llm_meta_file]
         )
+    
+    # Enable queuing for streaming support (required in Gradio 6.x)
+    cellatria.queue()
 
     return graph, cellatria
 
