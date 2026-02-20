@@ -31,6 +31,17 @@ jobs:
     if: ${{ github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-latest
 
+    # Declared here so linter recognises env context; values are overwritten at
+    # runtime by the "Set up Docker image metadata" step via $GITHUB_ENV
+    env:
+      IMAGE_REPO: ""
+      IMAGE_VERSION: ""
+      APP_IMAGE_REF: ""
+      BASE_IMAGE_REF: ""
+      BUILD_DATE: ""
+      VCS_REF: ""
+      TREE_STATE: ""
+
     # Required permissions for pushing to GitHub Container Registry (GHCR)
     permissions:
       packages: write

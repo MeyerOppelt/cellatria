@@ -21,6 +21,16 @@ jobs:
   build-and-push-base:
     runs-on: ubuntu-latest
 
+    # Declared here so linter recognises env context; values are overwritten at
+    # runtime by the "Set up Docker image metadata" step via $GITHUB_ENV
+    env:
+      IMAGE_REPO: ""
+      IMAGE_VERSION: ""
+      BASE_IMAGE_REF: ""
+      BUILD_DATE: ""
+      VCS_REF: ""
+      TREE_STATE: ""
+
     # Required permissions for pushing to GitHub Container Registry (GHCR)
     permissions:
       packages: write

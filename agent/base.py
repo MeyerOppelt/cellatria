@@ -11,6 +11,7 @@ from langchain_openai import AzureChatOpenAI
 from langchain_core.messages import HumanMessage, AIMessage
 from langchain_core.tools import tool
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
+from langchain_core.runnables import RunnableConfig
 from langgraph.graph import StateGraph
 from langgraph.graph.message import add_messages
 from langgraph.prebuilt import ToolNode, tools_condition
@@ -66,9 +67,9 @@ def create_cellatria(env_path):
     # Create the graph with schema
     graph_builder = StateGraph(AgentState)
     graph_builder.add_node("tools", ToolNode(tools))
-    graph_builder.add_node("chatbot", lambda state: {
-        "messages": chat_fn.invoke(state["messages"])
-    })
+    def chatbot_node(state: AgentState) -> dict:  # type: ignore[misc]
+        return {"messages": chat_fn.invoke(state["messages"])}  # type: ignore[arg-type]
+    graph_builder.add_node("chatbot", chatbot_node)
     graph_builder.add_edge("tools", "chatbot")
     graph_builder.add_conditional_edges("chatbot", tools_condition)
     graph_builder.set_entry_point("chatbot")
@@ -88,12 +89,16 @@ def create_cellatria(env_path):
         log_status("🟢 New interaction started.")
 
         # Convert history into LangChain format
+        # Skip leading assistant messages (e.g. initial greeting) to ensure
+        # the message list always starts with a HumanMessage
+        first_user_seen = False
         for h in history:
             role = h["role"]
             content = h["content"]
             if role == "user":
+                first_user_seen = True
                 messages.append(HumanMessage(content=content))
-            elif role == "assistant":
+            elif role == "assistant" and first_user_seen:
                 messages.append(AIMessage(content=content))
 
         # Append new user input
@@ -102,7 +107,7 @@ def create_cellatria(env_path):
             messages.append(HumanMessage(content=user_input))
 
         # Prepare config
-        config = {
+        config: RunnableConfig = {
             "configurable": {"thread_id": chat_thread_id},
             "recursion_limit": 1000
         }
@@ -171,20 +176,27 @@ def create_cellatria(env_path):
             pdf_note = ""
 
         log_status("🟣 Interaction complete.\n---")
-        
-        # Return both chat and backend markdown        
+
+        # Safely extract content string from final_message
+        if final_message is None:
+            response_text = "There was an error: no response received."
+        else:
+            raw_content = final_message.content
+            response_text = raw_content if isinstance(raw_content, str) else str(raw_content)
+
+        # Return both chat and backend markdown
         return (
             history + [
                 {"role": "user", "content": user_input},
-                {"role": "assistant", "content": final_message.content + pdf_note}
+                {"role": "assistant", "content": response_text + pdf_note}
             ],
             "",
             None,
             history + [
                 {"role": "user", "content": user_input},
-                {"role": "assistant", "content": final_message.content + pdf_note}
+                {"role": "assistant", "content": response_text + pdf_note}
             ],
-        "\n\n".join(backend_log)  # For the Accordion panel
+            "\n\n".join(backend_log)  # For the Accordion panel
         )
 
     # -------------------------------
@@ -211,11 +223,10 @@ def create_cellatria(env_path):
 
         # Chat Interface
         chatbot = gr.Chatbot(
-            value=[initial_message],
+            value=[initial_message],  # type: ignore[arg-type]
             label="cellAtria Agent",
             show_label=False,
             height=500,
-            show_copy_button=False,
             autoscroll=True,
             resizable=True
         )

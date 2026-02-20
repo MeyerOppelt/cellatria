@@ -1,31 +1,41 @@
-# Ignore everything
-*
+# Virtual environment (created by python -m venv .)
+bin/
+include/
+lib/
+lib64/
+share/
+pyvenv.cfg
 
-# Allow listed files/directories
-!agent/
-!agent/**
-!cellexpress/
-!cellexpress/**
-!docs/
-!docs/**
-!.github/
-!.github/**
-!.gitignore
-!*.png
-!*.env
-!README.md
-!NEWS.md
-!AUTHORS.md
-!CONTRIBUTING.md
-!Dockerfile
-!Dockerfile.base
-!LICENSE.txt
+# Environment / secrets
+.env
 
-# Exclude directories inside agent and cellexpress
-**/__pycache__/
-**/.gradio/
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+*.egg
+.eggs/
 
-# Ignore specific files in agent and cellexpress
-agent/sandbox.py
-agent/sandbox.txt
-cellexpress/sandbox.py
+# Jupyter
+.ipynb_checkpoints/
+*.ipynb
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs / temp
+*.log
+/tmp/
+*.tmp
+
+# R artifacts
+*.Rhistory
+*.RData
+*.Rout
+
