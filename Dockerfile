@@ -10,7 +10,7 @@
 # For local builds: docker build -f Dockerfile.base -t cellatria-base:latest .
 # For CI/CD builds: The base image is pulled from ghcr.io/astrazeneca/cellatria:base
 # To use a specific base image: docker build --build-arg BASE_IMAGE=ghcr.io/astrazeneca/cellatria:base -t cellatria:latest .
-ARG BASE_IMAGE=cellatria-base:latest
+ARG BASE_IMAGE=ghcr.io/meyeroppelt/cellatria:base-latest
 FROM ${BASE_IMAGE}
 
 # ---- Build-time arguments with safe defaults ----
@@ -73,15 +73,16 @@ RUN ln -s /opt/cellatria/cellexpress/main.py /usr/local/bin/cellexpress
 VOLUME /data
 WORKDIR /data
 # -----------------------------------
-# Expose the port used by Gradio
-EXPOSE 7860
+# Expose the port used by Streamlit
+EXPOSE 8501
 # -----------------------------------
 # Configure Python paths and data locations
 ENV PYTHONPATH=/opt/cellatria/agent
 ENV ENV_PATH=/data
+ENV CELLATRIA_ENV_PATH=/data
 # Disable Python output buffering for real-time logs in Docker
 ENV PYTHONUNBUFFERED=1
 # -----------------------------------
-# Default command launches the CellAtria chatbot interface
-CMD ["/usr/local/bin/cellatria"]
+# Default command launches the CellAtria Streamlit interface
+CMD ["streamlit", "run", "/opt/cellatria/agent/base_streamlit.py", "--server.address=0.0.0.0", "--server.port=8501", "--browser.gatherUsageStats=false"]
 # -----------------------------------

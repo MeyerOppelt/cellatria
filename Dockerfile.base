@@ -139,7 +139,7 @@ RUN --mount=type=cache,target=/root/.cache/pip \
     langchain-openai langchain-core langchain-anthropic
 
 RUN --mount=type=cache,target=/root/.cache/pip \
-    pip install --upgrade accelerate gradio langgraph PyMuPDF GEOparse \
+    pip install --upgrade accelerate streamlit langgraph PyMuPDF GEOparse \
     beautifulsoup4 google-genai
 # -----------------------------------
 # R Installation and Configuration
