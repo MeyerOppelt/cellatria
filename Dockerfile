@@ -17,6 +17,7 @@ FROM ${BASE_IMAGE}
 ARG IMAGE_REPO="AstraZeneca/cellatria"
 ARG IMAGE_TAG="v1.0.0"
 ARG IMAGE_VERSION="v1.0.0"
+ARG BUILD_NUMBER="0"
 ARG VCS_REF="unknown"
 ARG BUILD_DATE="1970-01-01T00:00:00Z"
 ARG TREE_STATE="clean"
@@ -32,19 +33,21 @@ LABEL org.opencontainers.image.source="https://github.com/${IMAGE_REPO}"
 LABEL org.opencontainers.image.url="https://github.com/${IMAGE_REPO}"
 LABEL org.opencontainers.image.ref.name="ghcr.io/${IMAGE_REPO}:${IMAGE_TAG}" 
 LABEL org.opencontainers.image.tree_state="${TREE_STATE}"
+LABEL com.cellatria.build_number="${BUILD_NUMBER}"
 
 # ---- Propagate to runtime ENV for in-container inspection ----
 ENV IMAGE_REPO="${IMAGE_REPO}"
 ENV IMAGE_TAG="${IMAGE_TAG}"
 ENV IMAGE_VERSION="${IMAGE_VERSION}"
+ENV IMAGE_BUILD_NUMBER="${BUILD_NUMBER}"
 ENV IMAGE_VCS_REF="${VCS_REF}"
 ENV IMAGE_BUILD_DATE="${BUILD_DATE}"
 ENV IMAGE_TREE_STATE="${TREE_STATE}"
 
 # ---- Embed a JSON manifest inside the image ----
 RUN mkdir -p /usr/local/share/cellatria && \
-    printf '{\n  "image_repo": "%s",\n  "image_tag": "%s",\n  "image_version": "%s",\n  "vcs_ref": "%s",\n  "build_date": "%s",\n  "tree_state": "%s"\n}\n' \
-      "$IMAGE_REPO" "$IMAGE_TAG" "$IMAGE_VERSION" "$VCS_REF" "$BUILD_DATE" "$TREE_STATE" \
+    printf '{\n  "image_repo": "%s",\n  "image_tag": "%s",\n  "image_version": "%s",\n  "build_number": "%s",\n  "vcs_ref": "%s",\n  "build_date": "%s",\n  "tree_state": "%s"\n}\n' \
+      "$IMAGE_REPO" "$IMAGE_TAG" "$IMAGE_VERSION" "$BUILD_NUMBER" "$VCS_REF" "$BUILD_DATE" "$TREE_STATE" \
     > /usr/local/share/cellatria/image-meta.json
 
 ENV IMAGE_META_PATH=/usr/local/share/cellatria/image-meta.json

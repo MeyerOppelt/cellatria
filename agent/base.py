@@ -287,6 +287,7 @@ def create_cellatria(env_path):
             # Run async generator and yield results to Gradio
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
+            stream_had_results = False
             try:
                 # Create async generator
                 async_gen = process_stream()
@@ -296,6 +297,7 @@ def create_cellatria(env_path):
                     try:
                         # Get next item from async generator
                         partial_text = loop.run_until_complete(async_gen.__anext__())
+                        stream_had_results = True
                         
                         # Yield the update to Gradio immediately
                         yield (
@@ -313,12 +315,28 @@ def create_cellatria(env_path):
                         )
                     except StopAsyncIteration:
                         # Generator is exhausted
+                        log_status("🔵 Stream completed")
                         break
                     except Exception as stream_error:
                         log_status(f"⚠️ Stream error: {str(stream_error)}")
+                        log_status(traceback.format_exc())
                         break
             finally:
                 loop.close()
+            
+            # If streaming didn't produce results, get final state from graph
+            if not stream_had_results or not accumulated_text:
+                log_status("⚠️ No streaming results, fetching final state from graph...")
+                try:
+                    final_state = graph.get_state(config)
+                    if final_state and final_state.values.get("messages"):
+                        last_message = final_state.values["messages"][-1]
+                        if isinstance(last_message, AIMessage):
+                            accumulated_text = last_message.content if isinstance(last_message.content, str) else str(last_message.content)
+                            log_status(f"✅ Retrieved final response from graph ({len(accumulated_text)} chars)")
+                except Exception as state_error:
+                    log_status(f"❌ Error fetching final state: {str(state_error)}")
+                    log_status(traceback.format_exc())
             
             log_status("✅ Agent response received.")
             
@@ -332,9 +350,9 @@ def create_cellatria(env_path):
         log_status("🟣 Interaction complete.\n---")
 
         # Ensure final state is yielded
-        # Always yield final state, even if accumulated_text is empty (e.g., during tool calls)
         if not accumulated_text:
-            accumulated_text = "Processing your request..."
+            accumulated_text = "I apologize, but I couldn't generate a response. Please check the logs for errors."
+            log_status("⚠️ No accumulated text after stream completion")
         
         yield (
             history + [
