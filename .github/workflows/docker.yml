@@ -1,19 +1,34 @@
 # GitHub Actions workflow
-# Build and Push cellatria image to GHCR
-name: cellatria image
+# Build and Push cellatria application image to GHCR
+name: cellatria app image
 
-# Trigger workflow on push to main branch
+# Trigger workflow on push to main branch or after base image completes
 on:
-  workflow_dispatch:  # Only runs when manually triggered from the UI
+  workflow_dispatch:  # Manual trigger from UI
+  push:
+    branches:
+      - main
+    paths:
+      - 'agent/**'
+      - 'cellexpress/**'
+      - 'Dockerfile'
+      - '.github/workflows/docker.yml'
+  workflow_run:
+    workflows: ["cellatria base image"]
+    types:
+      - completed
+    branches:
+      - main
 
 # Concurrency Control
 concurrency:
-  group: docker-build
+  group: docker-app-build
   cancel-in-progress: true
 
 jobs:
-  build-and-push:
-    if: true  # Optional double-safety to skip execution
+  build-and-push-app:
+    # Only run if workflow_run trigger is from a successful base build, or from other triggers
+    if: ${{ github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-latest
 
     # Required permissions for pushing to GitHub Container Registry (GHCR)
@@ -25,6 +40,16 @@ jobs:
       # Step 1: Checkout the repository code
       - name: Checkout repository
         uses: actions/checkout@v4
+
+      # Step 1.5: Show trigger information
+      - name: Workflow trigger info
+        run: |
+          if [ "${{ github.event_name }}" == "workflow_run" ]; then
+            echo "🔗 Triggered by base image workflow completion"
+            echo "Base workflow conclusion: ${{ github.event.workflow_run.conclusion }}"
+          else
+            echo "🚀 Triggered by: ${{ github.event_name }}"
+          fi
 
       # Step 2: Set up Docker Buildx for caching support
       - name: Set up Docker Buildx
@@ -43,43 +68,63 @@ jobs:
         run: |
           IMAGE_REPO=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
           IMAGE_VERSION="v1.0.0"                                        
-          IMAGE_REF="ghcr.io/${IMAGE_REPO}:${IMAGE_VERSION}"            
+          APP_IMAGE_REF="ghcr.io/${IMAGE_REPO}:${IMAGE_VERSION}"
+          BASE_IMAGE_REF="ghcr.io/${IMAGE_REPO}:base"
           BUILD_DATE="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
           VCS_REF="${{ github.sha }}"
           TREE_STATE="clean"
 
           echo "IMAGE_REPO=${IMAGE_REPO}"   >> $GITHUB_ENV
           echo "IMAGE_VERSION=${IMAGE_VERSION}" >> $GITHUB_ENV
-          echo "IMAGE_REF=${IMAGE_REF}"     >> $GITHUB_ENV
+          echo "APP_IMAGE_REF=${APP_IMAGE_REF}"     >> $GITHUB_ENV
+          echo "BASE_IMAGE_REF=${BASE_IMAGE_REF}"   >> $GITHUB_ENV
           echo "BUILD_DATE=${BUILD_DATE}"   >> $GITHUB_ENV
           echo "VCS_REF=${VCS_REF}"         >> $GITHUB_ENV
           echo "TREE_STATE=${TREE_STATE}"   >> $GITHUB_ENV
 
-      # Step 5: Build and push Docker image with optimized multi-layer caching
-      - name: Build and push Docker image
+      # Step 5: Build and push application Docker image
+      - name: Build and push application Docker image
         uses: docker/build-push-action@v5
         with:
           context: .
+          file: ./Dockerfile
           push: true
           tags: |
-            ${{ env.IMAGE_REF }}
+            ${{ env.APP_IMAGE_REF }}
             ghcr.io/${{ env.IMAGE_REPO }}:latest
           build-args: |
+            BASE_IMAGE=${{ env.BASE_IMAGE_REF }}
             IMAGE_REPO=${{ env.IMAGE_REPO }}
             IMAGE_TAG=${{ env.IMAGE_VERSION }}
             IMAGE_VERSION=${{ env.IMAGE_VERSION }}
             VCS_REF=${{ env.VCS_REF }}
             BUILD_DATE=${{ env.BUILD_DATE }}
             TREE_STATE=${{ env.TREE_STATE }}
-          # Multi-source caching strategy for maximum speed:
-          # 1. GitHub Actions cache (primary, scoped to workflow)
-          # 2. Registry cache from latest tag (fallback for cache misses)
-          # 3. Registry cache from versioned tag (for rebuilds)
+          # Multi-source caching strategy for application image
           cache-from: |
-            type=gha,scope=cellatria-build
+            type=gha,scope=cellatria-app-build
             type=registry,ref=ghcr.io/${{ env.IMAGE_REPO }}:latest
-            type=registry,ref=${{ env.IMAGE_REF }}
-          cache-to: type=gha,mode=max,scope=cellatria-build
+            type=registry,ref=${{ env.APP_IMAGE_REF }}
+          cache-to: type=gha,mode=max,scope=cellatria-app-build
           # Enable build optimizations
           provenance: false
           sbom: false
+
+      # Step 6: Output summary
+      - name: Build summary
+        run: |
+          echo "### Application Image Build Complete! :rocket:" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          if [ "${{ github.event_name }}" == "workflow_run" ]; then
+            echo "**Triggered by:** Base image workflow completion :link:" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+          fi
+          echo "**Image Tags:**" >> $GITHUB_STEP_SUMMARY
+          echo "- \`${{ env.APP_IMAGE_REF }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- \`ghcr.io/${{ env.IMAGE_REPO }}:latest\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Build Info:**" >> $GITHUB_STEP_SUMMARY
+          echo "- Version: ${{ env.IMAGE_VERSION }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Base Image: ${{ env.BASE_IMAGE_REF }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Commit: ${{ env.VCS_REF }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Build Date: ${{ env.BUILD_DATE }}" >> $GITHUB_STEP_SUMMARY

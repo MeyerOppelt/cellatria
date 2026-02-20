@@ -1,0 +1,105 @@
+# GitHub Actions workflow
+# Build and Push cellatria base image to GHCR
+name: cellatria base image
+
+# Trigger workflow on push to main branch when dependencies change
+on:
+  workflow_dispatch:  # Manual trigger from UI
+  push:
+    branches:
+      - main
+    paths:
+      - 'Dockerfile.base'
+      - '.github/workflows/docker-base.yml'
+
+# Concurrency Control
+concurrency:
+  group: docker-base-build
+  cancel-in-progress: true
+
+jobs:
+  build-and-push-base:
+    runs-on: ubuntu-latest
+
+    # Required permissions for pushing to GitHub Container Registry (GHCR)
+    permissions:
+      packages: write
+      contents: read
+
+    steps:
+      # Step 1: Checkout the repository code
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # Step 2: Set up Docker Buildx for caching support
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # Step 3: Authenticate Docker to GHCR using GitHub Actions token
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Step 4: Set up Docker image metadata
+      - name: Set up Docker image metadata
+        run: |
+          IMAGE_REPO=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
+          IMAGE_VERSION="v1.0.0"                                        
+          BASE_IMAGE_REF="ghcr.io/${IMAGE_REPO}:base"
+          BUILD_DATE="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+          VCS_REF="${{ github.sha }}"
+          TREE_STATE="clean"
+
+          echo "IMAGE_REPO=${IMAGE_REPO}"   >> $GITHUB_ENV
+          echo "IMAGE_VERSION=${IMAGE_VERSION}" >> $GITHUB_ENV
+          echo "BASE_IMAGE_REF=${BASE_IMAGE_REF}" >> $GITHUB_ENV
+          echo "BUILD_DATE=${BUILD_DATE}"   >> $GITHUB_ENV
+          echo "VCS_REF=${VCS_REF}"         >> $GITHUB_ENV
+          echo "TREE_STATE=${TREE_STATE}"   >> $GITHUB_ENV
+
+      # Step 5: Build and push base Docker image
+      - name: Build and push base Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile.base
+          push: true
+          tags: |
+            ${{ env.BASE_IMAGE_REF }}
+            ghcr.io/${{ env.IMAGE_REPO }}:base-latest
+          build-args: |
+            IMAGE_REPO=${{ env.IMAGE_REPO }}
+            IMAGE_TAG=base
+            IMAGE_VERSION=${{ env.IMAGE_VERSION }}-base
+            VCS_REF=${{ env.VCS_REF }}
+            BUILD_DATE=${{ env.BUILD_DATE }}
+            TREE_STATE=${{ env.TREE_STATE }}
+          # Multi-source caching strategy for base image
+          cache-from: |
+            type=gha,scope=cellatria-base-build
+            type=registry,ref=ghcr.io/${{ env.IMAGE_REPO }}:base
+            type=registry,ref=ghcr.io/${{ env.IMAGE_REPO }}:base-latest
+          cache-to: type=gha,mode=max,scope=cellatria-base-build
+          # Enable build optimizations
+          provenance: false
+          sbom: false
+
+      # Step 6: Output summary
+      - name: Build summary
+        run: |
+          echo "### Base Image Build Complete! :rocket:" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Image Tags:**" >> $GITHUB_STEP_SUMMARY
+          echo "- \`${{ env.BASE_IMAGE_REF }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- \`ghcr.io/${{ env.IMAGE_REPO }}:base-latest\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Build Info:**" >> $GITHUB_STEP_SUMMARY
+          echo "- Version: ${{ env.IMAGE_VERSION }}-base" >> $GITHUB_STEP_SUMMARY
+          echo "- Commit: ${{ env.VCS_REF }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Build Date: ${{ env.BUILD_DATE }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Next Steps:**" >> $GITHUB_STEP_SUMMARY
+          echo "- :hourglass_flowing_sand: Application image workflow will trigger automatically" >> $GITHUB_STEP_SUMMARY
