@@ -134,6 +134,18 @@ def create_cellatria(env_path):
             )
             return
 
+        # Immediately show user message with a placeholder for assistant response
+        yield (
+            history + [
+                {"role": "user", "content": user_input},
+                {"role": "assistant", "content": "🤔 Thinking..."}
+            ],
+            "",
+            None,
+            history,  # Don't update state yet
+            ""
+        )
+
         # Stream responses from LangGraph
         try:
             log_status("🤖 Invoking agent...")
@@ -220,20 +232,23 @@ def create_cellatria(env_path):
         log_status("🟣 Interaction complete.\n---")
 
         # Ensure final state is yielded
-        if accumulated_text:
-            yield (
-                history + [
-                    {"role": "user", "content": user_input},
-                    {"role": "assistant", "content": accumulated_text}
-                ],
-                "",
-                None,
-                history + [
-                    {"role": "user", "content": user_input},
-                    {"role": "assistant", "content": accumulated_text}
-                ],
-                "\n\n".join(backend_log)
-            )
+        # Always yield final state, even if accumulated_text is empty (e.g., during tool calls)
+        if not accumulated_text:
+            accumulated_text = "Processing your request..."
+        
+        yield (
+            history + [
+                {"role": "user", "content": user_input},
+                {"role": "assistant", "content": accumulated_text}
+            ],
+            "",
+            None,
+            history + [
+                {"role": "user", "content": user_input},
+                {"role": "assistant", "content": accumulated_text}
+            ],
+            "\n\n".join(backend_log)
+        )
 
     # -------------------------------
     # Clear the log file when app starts
