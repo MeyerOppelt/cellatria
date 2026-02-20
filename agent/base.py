@@ -79,6 +79,7 @@ def create_cellatria(env_path):
     # Chat Handler
     # Persistent thread ID for LangGraph
     chat_thread_id = str(uuid.uuid4())
+    
     def gr_block_fn(user_input, pdf_file, history):
         messages = []
 
@@ -113,55 +114,14 @@ def create_cellatria(env_path):
         }
 
         backend_log = []
-        final_message = None
+        accumulated_text = ""
+        pdf_note = ""
 
-        # Invoke LangGraph
-        try:
-            log_status("🤖 Invoking agent...")
-            for step in graph.stream({"messages": messages}, config=config):
-                # --- Extract summary info for backend ---
-                summary_lines = []
-                if "chatbot" in step:
-                    msg = step["chatbot"]["messages"]
-                    meta = getattr(msg, "response_metadata", {})
-                    model = meta.get("model_name", "")
-                    tokens = meta.get("token_usage", {})
-                    summary_lines.append(f"**Step:** `chatbot`")
-                    summary_lines.append(f"**Model:** `{model}`")
-                    summary_lines.append(
-                        f"**Tokens:** {tokens.get('completion_tokens', '?')} completion, "
-                        f"{tokens.get('prompt_tokens', '?')} prompt, "
-                        f"{tokens.get('total_tokens', '?')} total"
-                    )
-                elif "tools" in step:
-                    for tool_msg in step["tools"]["messages"]:
-                        summary_lines.append(f"**Step:** `tools`")
-                        summary_lines.append(f"**Tool:** `{getattr(tool_msg, 'name', 'unknown')}`")
-                # --- End summary info ---
-
-                # Pretty-print the step dict as plain text
-                step_txt = pprint.pformat(step, compact=True, width=120)
-                backend_log.append(
-                    "\n".join(summary_lines) +
-                    "\n\n```python\n" + step_txt + "\n```\n"
-                )
-                # Save final message for chat
-                if "chatbot" in step:
-                    final_message = step["chatbot"]["messages"]
-
-            log_status("✅ Agent response received.")
-        except Exception as e:
-            log_status(f"❌ Error: {str(e)}")
-            log_status(traceback.format_exc())
-            final_message = AIMessage(content="There was an error processing your request.")
-            backend_log.append(f"❌ Error: {str(e)}")
-            backend_log.append(traceback.format_exc())
-
-        # If PDF uploaded, include that info too (future use)
+        # Handle PDF upload
         if pdf_file:
             pdf_note = f"\n\n📄 Received PDF: `{pdf_file.name}`. \nI can extract metadata from it!"
             log_status("🟣 Interaction complete.\n---")
-            return (
+            yield (
                 history + [
                     {"role": "user", "content": user_input},
                     {"role": "assistant", "content": pdf_note}],
@@ -172,32 +132,108 @@ def create_cellatria(env_path):
                     {"role": "assistant", "content": pdf_note}],
                 pdf_note
             )
-        else:
-            pdf_note = ""
+            return
+
+        # Stream responses from LangGraph
+        try:
+            log_status("🤖 Invoking agent...")
+            
+            import asyncio
+            
+            # Helper to run async streaming
+            async def process_stream():
+                nonlocal accumulated_text, backend_log
+                
+                async for event in graph.astream_events(
+                    {"messages": messages}, 
+                    config=config, 
+                    version="v2"
+                ):
+                    kind = event["event"]
+                    
+                    # Capture streaming tokens from the LLM
+                    if kind == "on_chat_model_stream":
+                        chunk = event.get("data", {}).get("chunk")
+                        if chunk and hasattr(chunk, "content") and chunk.content:
+                            accumulated_text += chunk.content
+                            # Yield streaming update
+                            yield accumulated_text
+                    
+                    # Log tool usage
+                    elif kind == "on_tool_start":
+                        tool_name = event.get("name", "unknown")
+                        backend_log.append(f"**Step:** `tools`\n**Tool:** `{tool_name}`")
+                    
+                    # Log chat model completion
+                    elif kind == "on_chat_model_end":
+                        output = event.get("data", {}).get("output")
+                        if output:
+                            meta = getattr(output, "response_metadata", {})
+                            model = meta.get("model_name", "")
+                            tokens = meta.get("token_usage", {})
+                            if model or tokens:
+                                summary = [
+                                    f"**Step:** `chatbot`",
+                                    f"**Model:** `{model}`" if model else "",
+                                    f"**Tokens:** {tokens.get('completion_tokens', '?')} completion, "
+                                    f"{tokens.get('prompt_tokens', '?')} prompt, "
+                                    f"{tokens.get('total_tokens', '?')} total" if tokens else ""
+                                ]
+                                backend_log.append("\n".join([s for s in summary if s]))
+            
+            # Run async generator and yield results
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            try:
+                async_gen = process_stream()
+                while True:
+                    try:
+                        partial_text = loop.run_until_complete(async_gen.__anext__())
+                        # Yield the update to Gradio
+                        yield (
+                            history + [
+                                {"role": "user", "content": user_input},
+                                {"role": "assistant", "content": partial_text}
+                            ],
+                            "",  # Clear user input
+                            None,  # Clear PDF upload
+                            history + [
+                                {"role": "user", "content": user_input},
+                                {"role": "assistant", "content": partial_text}
+                            ],
+                            "\n\n".join(backend_log)
+                        )
+                    except StopAsyncIteration:
+                        break
+            finally:
+                loop.close()
+            
+            log_status("✅ Agent response received.")
+            
+        except Exception as e:
+            log_status(f"❌ Error: {str(e)}")
+            log_status(traceback.format_exc())
+            accumulated_text = "There was an error processing your request."
+            backend_log.append(f"❌ Error: {str(e)}")
+            backend_log.append(traceback.format_exc())
 
         log_status("🟣 Interaction complete.\n---")
 
-        # Safely extract content string from final_message
-        if final_message is None:
-            response_text = "There was an error: no response received."
-        else:
-            raw_content = final_message.content
-            response_text = raw_content if isinstance(raw_content, str) else str(raw_content)
-
-        # Return both chat and backend markdown
-        return (
-            history + [
-                {"role": "user", "content": user_input},
-                {"role": "assistant", "content": response_text + pdf_note}
-            ],
-            "",
-            None,
-            history + [
-                {"role": "user", "content": user_input},
-                {"role": "assistant", "content": response_text + pdf_note}
-            ],
-            "\n\n".join(backend_log)  # For the Accordion panel
-        )
+        # Ensure final state is yielded
+        if accumulated_text:
+            yield (
+                history + [
+                    {"role": "user", "content": user_input},
+                    {"role": "assistant", "content": accumulated_text}
+                ],
+                "",
+                None,
+                history + [
+                    {"role": "user", "content": user_input},
+                    {"role": "assistant", "content": accumulated_text}
+                ],
+                "\n\n".join(backend_log)
+            )
 
     # -------------------------------
     # Clear the log file when app starts

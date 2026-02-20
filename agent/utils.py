@@ -35,15 +35,20 @@ def get_llm_from_env(path_to_env):
             azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
             openai_api_key=os.getenv("AZURE_OPENAI_API_KEY"),
             temperature = os.getenv("AZURE_OPENAI_TEMPERATURE"),
-            top_p = os.getenv("AZURE_OPENAI_TOP_P")   
+            top_p = os.getenv("AZURE_OPENAI_TOP_P"),
+            streaming=True
         )
     elif provider == "OpenAI":
         return ChatOpenAI(
             model_name=os.getenv("OPENAI_MODEL", "gpt-4"),
             openai_api_key=os.getenv("OPENAI_API_KEY"),
+            streaming=True
         )
     elif provider == "Anthropic":
-        return ChatAnthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
+        return ChatAnthropic(
+            api_key=os.getenv("ANTHROPIC_API_KEY"),
+            streaming=True
+        )
     elif provider == "Google":
         # Example using google.genai (Gemini)        
         genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
@@ -56,7 +61,8 @@ def get_llm_from_env(path_to_env):
             model_name=os.getenv("LOCAL_MODEL_NAME", "local-model"),
             openai_api_base=os.getenv("LOCAL_BASE_URL", "http://localhost:1234/v1"),
             openai_api_key=os.getenv("LOCAL_API_KEY", "not-needed"),  # Optional API key for local models
-            temperature=float(os.getenv("LOCAL_TEMPERATURE", "0.7"))
+            temperature=float(os.getenv("LOCAL_TEMPERATURE", "0.7")),
+            streaming=True
         )
     else:
         supported = ["Azure OpenAI", "OpenAI", "Anthropic", "Google", "Local"]

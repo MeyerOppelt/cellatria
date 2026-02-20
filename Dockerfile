@@ -76,6 +76,8 @@ EXPOSE 7860
 # Configure Python paths and data locations
 ENV PYTHONPATH=/opt/cellatria/agent
 ENV ENV_PATH=/data
+# Disable Python output buffering for real-time logs in Docker
+ENV PYTHONUNBUFFERED=1
 # -----------------------------------
 # Default command launches the CellAtria chatbot interface
 CMD ["/usr/local/bin/cellatria"]
