@@ -60,6 +60,20 @@ jobs:
           echo "VCS_REF=${VCS_REF}"         >> $GITHUB_ENV
           echo "TREE_STATE=${TREE_STATE}"   >> $GITHUB_ENV
 
+      # Step 4.5: Verify Dockerfile.base exists
+      - name: Verify Dockerfile.base
+        run: |
+          echo "Current directory: $(pwd)"
+          echo "Listing files:"
+          ls -la
+          if [ -f "Dockerfile.base" ]; then
+            echo "✓ Dockerfile.base found"
+            head -5 Dockerfile.base
+          else
+            echo "✗ Dockerfile.base not found!"
+            exit 1
+          fi
+
       # Step 5: Build and push base Docker image
       - name: Build and push base Docker image
         uses: docker/build-push-action@v5
