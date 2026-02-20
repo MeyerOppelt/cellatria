@@ -18,6 +18,7 @@
 !AUTHORS.md
 !CONTRIBUTING.md
 !Dockerfile
+!Dockerfile.base
 !LICENSE.txt
 
 # Exclude directories inside agent and cellexpress
