@@ -17,7 +17,10 @@ from stndrd_analysis import run_analysis
 from report_wrapper import generate_report
 from dea_analysis import compute_degs
 from call_celltypist import run_celltypist
-from call_scimilarity import run_scimilarity
+try:
+    from call_scimilarity import run_scimilarity
+except ImportError:
+    run_scimilarity = None
 from helper import (create_unique_ids, total_unique_genes, parse_vars, qc_verbose, 
                     qc_verbose_ls, summarize_adata_structure)
 
@@ -122,11 +125,14 @@ def control_pipe(args):
 
         if "scimilarity" in methods:
             print("*** 🔄 Running SCimilarity annotation...")
-            adata = run_scimilarity(raw_counts, adata, args)  # Run SCimilarity
-            # Run DEA for celltype_scimilarity
-            if args.top_n_deg_scim != 0:
-                adata = compute_degs(adata, groupby="cellstate_scimilarity", pts=True, dea_method=args.dea_method, n_genes=args.top_n_deg_scim,
-                                    pval_threshold=args.pval_threshold, logfc_threshold=args.logfc_threshold, pts_threshold=args.pts_threshold)
+            if run_scimilarity is None:
+                print("*** ⚠️ SCimilarity not available (module not installed) — skipping.")
+            else:
+                adata = run_scimilarity(raw_counts, adata, args)  # Run SCimilarity
+                # Run DEA for celltype_scimilarity
+                if args.top_n_deg_scim != 0:
+                    adata = compute_degs(adata, groupby="cellstate_scimilarity", pts=True, dea_method=args.dea_method, n_genes=args.top_n_deg_scim,
+                                        pval_threshold=args.pval_threshold, logfc_threshold=args.logfc_threshold, pts_threshold=args.pts_threshold)
 
         if "celltypist" in methods:
             print("*** 🔄 Running CellTypist annotation...")

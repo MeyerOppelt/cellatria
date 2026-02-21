@@ -3,10 +3,13 @@
 
 import os
 import sys
+import warnings
 import pandas as pd
 import scanpy as sc
-import celltypist
-from celltypist import models
+with warnings.catch_warnings():
+    warnings.filterwarnings("ignore", category=FutureWarning, module="celltypist")
+    import celltypist
+    from celltypist import models
 from helper import ontology_map, summary_by_abundance
 
 # -------------------------------

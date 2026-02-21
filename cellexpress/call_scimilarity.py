@@ -5,9 +5,9 @@ import os
 import sys
 import pandas as pd
 import scanpy as sc
-from scimilarity.utils import lognorm_counts, align_dataset
-from scimilarity import CellAnnotation
 from helper import ontology_map, summary_by_abundance
+
+# scimilarity is an optional dependency — imported lazily inside run_scimilarity()
 
 # -------------------------------
 
@@ -35,6 +35,15 @@ def run_scimilarity(raw_counts, adata, args):
 
     # -------------------------------
     print("*** 🔄 Initializing SCimilarity for cell annotation...")
+
+    try:
+        from scimilarity.utils import lognorm_counts, align_dataset
+        from scimilarity import CellAnnotation
+    except ImportError:
+        raise ImportError(
+            "The 'scimilarity' package is not installed. "
+            "Install it or disable scimilarity in the annotation methods."
+        )
 
     # -------------------------------
     # Load the SCimilarity model

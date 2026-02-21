@@ -7,7 +7,7 @@ import importlib
 import random
 import string
 import platform
-import pkg_resources
+import importlib.metadata
 import re
 import requests
 import urllib3
@@ -713,8 +713,8 @@ def get_python_environment():
     """
 
     packages = [
-        {"Package": d.project_name, "Version": d.version}
-        for d in pkg_resources.working_set
+        {"Package": d.metadata["Name"], "Version": d.metadata["Version"]}
+        for d in importlib.metadata.distributions()
     ]
 
     return {
@@ -1869,6 +1869,62 @@ def try_load_sample_from_path(path: str, sample_id: str):
     if len(h5ad_files) > 1:
         raise FileExistsError(f"🚨 Multiple `.h5ad` files found in {path}. Cannot determine which one to use.")
 
+    # (4b) Compressed AnnData (.h5ad.gz) — decompress to tmp then load
+    h5ad_gz_files = glob.glob(os.path.join(path, "*.h5ad.gz"))
+    if len(h5ad_gz_files) == 1:
+        import tempfile
+        src = h5ad_gz_files[0]
+        print(f"*** 🔄 Decompressing and loading h5ad.gz: {src} -> {sample_id}.")
+        with tempfile.NamedTemporaryFile(suffix=".h5ad", delete=False) as tmp:
+            tmp_path = tmp.name
+        try:
+            with gzip.open(src, "rb") as f_in, open(tmp_path, "wb") as f_out:
+                shutil.copyfileobj(f_in, f_out)
+            adata = sc.read_h5ad(tmp_path)
+        finally:
+            if os.path.exists(tmp_path):
+                os.remove(tmp_path)
+        metadata_cols = list(adata.obs.columns)
+        if metadata_cols:
+            print(f"*** 📋 Metadata fields available in `.obs`: {', '.join(metadata_cols)}")
+        else:
+            print("*** ⚠️  No metadata fields found in `.obs`.")
+        return adata
+
+    # (4c) Loom (.loom) — direct load
+    loom_files = glob.glob(os.path.join(path, "*.loom"))
+    if len(loom_files) == 1:
+        print(f"*** 🔄 Loading sample from loom file: {loom_files[0]} -> {sample_id}.")
+        try:
+            adata = sc.read_loom(loom_files[0])
+        except ModuleNotFoundError as e:
+            raise ModuleNotFoundError(
+                f"Reading loom files requires 'loompy'. Install it with: pip install loompy\n(Original error: {e})"
+            )
+        return adata
+
+    # (4d) Compressed loom (.loom.gz) — decompress to tmp then load
+    loom_gz_files = glob.glob(os.path.join(path, "*.loom.gz"))
+    if len(loom_gz_files) == 1:
+        import tempfile
+        src = loom_gz_files[0]
+        print(f"*** 🔄 Decompressing and loading loom.gz: {src} -> {sample_id}.")
+        with tempfile.NamedTemporaryFile(suffix=".loom", delete=False) as tmp:
+            tmp_path = tmp.name
+        try:
+            with gzip.open(src, "rb") as f_in, open(tmp_path, "wb") as f_out:
+                shutil.copyfileobj(f_in, f_out)
+            try:
+                adata = sc.read_loom(tmp_path)
+            except ModuleNotFoundError as e:
+                raise ModuleNotFoundError(
+                    f"Reading loom files requires 'loompy'. Install it with: pip install loompy\n(Original error: {e})"
+                )
+        finally:
+            if os.path.exists(tmp_path):
+                os.remove(tmp_path)
+        return adata
+
     # (5) Plain .txt.gz matrix 
     txtgz_files = glob.glob(os.path.join(path, "*.txt.gz"))
     if len(txtgz_files) == 1:
@@ -1955,7 +2011,11 @@ def fix_file_format(sample_path: str) -> str:
     if glob.glob(os.path.join(sample_path, "*.h5")) \
     or glob.glob(os.path.join(sample_path, "*.h5ad")) \
     or glob.glob(os.path.join(sample_path, "*.txt.gz")) \
-    or len(glob.glob(os.path.join(sample_path, "*.csv.gz"))) == 1:
+    or len(glob.glob(os.path.join(sample_path, "*.csv.gz"))) == 1 \
+    or glob.glob(os.path.join(sample_path, "**", "*.h5ad.gz"), recursive=True) \
+    or glob.glob(os.path.join(sample_path, "**", "*.h5ad"),    recursive=True) \
+    or glob.glob(os.path.join(sample_path, "**", "*.loom.gz"), recursive=True) \
+    or glob.glob(os.path.join(sample_path, "**", "*.loom"),    recursive=True):
         report.append(f"✅ Non-10X format detected — skipping format fix for `{sample_path}`")
         return "\n".join(report)
 

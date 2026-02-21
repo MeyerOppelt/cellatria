@@ -62,8 +62,8 @@ WORKDIR /opt/cellatria
 COPY . /opt/cellatria/
 # -----------------------------------
 # Make cellatria CLI callable via `cellatria`
-RUN chmod +x /opt/cellatria/agent/chatbot.py
-RUN ln /opt/cellatria/agent/chatbot.py /usr/local/bin/cellatria
+RUN chmod +x /opt/cellatria/agent/chatbot_streamlit.py
+RUN ln -sf /opt/cellatria/agent/chatbot_streamlit.py /usr/local/bin/cellatria
 # -----------------------------------
 # Make cellexpress CLI callable via `cellexpress`
 RUN chmod +x /opt/cellatria/cellexpress/main.py

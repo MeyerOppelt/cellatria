@@ -62,12 +62,14 @@ def read_in(args):
         # 1️⃣ Try flat structure first
         adata = try_load_sample_from_path(sample_path, sample_id)
 
-        # 2️⃣ Try nested directory if flat failed
+        # 2️⃣ Walk all subdirectories recursively if flat failed
         if adata is None:
-            subdirs = [os.path.join(sample_path, d) for d in os.listdir(sample_path)
-                    if os.path.isdir(os.path.join(sample_path, d))]
-            if len(subdirs) == 1:
-                adata = try_load_sample_from_path(subdirs[0], sample_id)
+            for dirpath, dirnames, _ in os.walk(sample_path):
+                if dirpath == sample_path:
+                    continue  # already tried flat
+                adata = try_load_sample_from_path(dirpath, sample_id)
+                if adata is not None:
+                    break
 
         # 3️⃣ Fail if nothing worked
         if adata is None:
