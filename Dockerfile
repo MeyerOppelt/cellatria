@@ -84,5 +84,6 @@ ENV CELLATRIA_ENV_PATH=/data
 ENV PYTHONUNBUFFERED=1
 # -----------------------------------
 # Default command launches the CellAtria Streamlit interface
-CMD ["streamlit", "run", "/opt/cellatria/agent/base_streamlit.py", "--server.address=0.0.0.0", "--server.port=8501", "--browser.gatherUsageStats=false"]
+ENTRYPOINT ["streamlit", "run", "/opt/cellatria/agent/chatbot_streamlit.py", "--server.address=0.0.0.0", "--server.port=8501", "--browser.gatherUsageStats=false", "--"]
+CMD ["--env_path", "/data"]
 # -----------------------------------

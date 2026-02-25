@@ -17,14 +17,14 @@ Usage:
   streamlit run agent/chatbot_streamlit.py -- --env_path /path/to/projects
 
 Options:
-  --env_path     Path to directory containing .env file (default: /mnt/work/projects)
+  --env_path     Path to directory containing .env file (default: /data)
   --version, -v  Show version information
 """
 
 # Parse arguments
 parser = argparse.ArgumentParser(add_help=False)
 parser.add_argument("--version", "-v", action="store_true")
-parser.add_argument("--env_path", type=str, default="/mnt/work/projects")
+parser.add_argument("--env_path", type=str, default="/data")
 args, unknown = parser.parse_known_args()
 
 if args.version:
@@ -41,12 +41,3 @@ print("=" * 60)
 print("✅ CellAtria Streamlit version initializing...")
 print(f"📍 Environment path: {args.env_path}")
 print("=" * 60)
-print("📍 The application will open in your browser automatically.")
-print("   If not, copy and paste the URL shown below.")
-print("=" * 60)
-print("\n")
-
-# -------------------------------
-# Launch is handled by Streamlit's run command
-# The actual app is in base_streamlit.py
-# -------------------------------

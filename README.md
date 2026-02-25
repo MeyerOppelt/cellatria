@@ -22,7 +22,7 @@
 
 <!-- CellAtria Infographic -->
 <p align="center" width="100%">
-  <img width="100%" src="cellatria_git_fig0.png"> 
+  <img width="100%" src="docs/cellatria_git_fig0.png"> 
 </p>
 
 ---
@@ -37,7 +37,7 @@
 > Through its comprehensive interface, **CellAtria** empowers users to engage with a language model augmented by task-specific tools. This eliminates the need for manual command-line operations, accelerating data onboarding and the reuse of public single-cell resources.
 
 <p align="center" width="100%">
-  <img width="55%" src="cellatria_git_fig1.png"> 
+  <img width="55%" src="docs/cellatria_git_fig1.png"> 
 </p>
 <p align="center">
   <small><em><strong>Language model-mediated orchestration of toolchains</strong>. Upon receiving a user prompt, the CellAtria interface transfers the request to the LLM agent, which interprets intent and autonomously invokes relevant tools. Outputs are returned through the interface, completing a full cycle of context-aware execution.</em></small>
