@@ -74,7 +74,7 @@ VOLUME /data
 WORKDIR /data
 # -----------------------------------
 # Expose the port used by Streamlit
-EXPOSE 8501
+EXPOSE 7860
 # -----------------------------------
 # Configure Python paths and data locations
 ENV PYTHONPATH=/opt/cellatria/agent
@@ -84,6 +84,5 @@ ENV CELLATRIA_ENV_PATH=/data
 ENV PYTHONUNBUFFERED=1
 # -----------------------------------
 # Default command launches the CellAtria Streamlit interface
-ENTRYPOINT ["streamlit", "run", "/opt/cellatria/agent/chatbot_streamlit.py", "--server.address=0.0.0.0", "--server.port=8501", "--browser.gatherUsageStats=false", "--"]
-CMD ["--env_path", "/data"]
+CMD ["cellatria", "--env_path", "/data"]
 # -----------------------------------

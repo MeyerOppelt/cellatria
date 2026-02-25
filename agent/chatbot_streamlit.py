@@ -35,9 +35,11 @@ if args.version:
 os.environ["CELLATRIA_ENV_PATH"] = args.env_path
 
 # -------------------------------
-
-print("\n")
-print("=" * 60)
-print("✅ CellAtria Streamlit version initializing...")
-print(f"📍 Environment path: {args.env_path}")
-print("=" * 60)
+# Launch Streamlit with base_streamlit.py, inheriting the environment
+script = os.path.join(os.path.dirname(os.path.abspath(__file__)), "base_streamlit.py")
+os.execvp("streamlit", [
+    "streamlit", "run", script,
+    "--server.address=0.0.0.0",
+    "--server.port=7860",
+    "--browser.gatherUsageStats=false"
+])
