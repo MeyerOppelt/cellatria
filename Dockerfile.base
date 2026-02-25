@@ -130,18 +130,18 @@ RUN --mount=type=cache,target=/root/.cache/pip \
 # R Installation and Configuration
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
-    apt update -qq && \
-    apt install -y apt-transport-https software-properties-common dirmngr && \
-    curl -sSL 'http://keyserver.ubuntu.com/pks/lookup?op=get&search=0xE298A3A825C0D65DFD57CBB651716619E084DAB9' | apt-key add - && \
-    wget -qO- https://cloud.r-project.org/bin/linux/ubuntu/marutter_pubkey.asc | tee -a /etc/apt/trusted.gpg.d/cran_ubuntu_key.asc && \
-    add-apt-repository 'deb http://cloud.r-project.org/bin/linux/ubuntu jammy-cran40/' && \
+    apt-get update -qq && \
+    apt-get install -y --no-install-recommends apt-transport-https dirmngr && \
+    wget -qO- https://cloud.r-project.org/bin/linux/ubuntu/marutter_pubkey.asc \
+        | tee /etc/apt/trusted.gpg.d/cran_ubuntu_key.asc && \
+    echo "deb https://cloud.r-project.org/bin/linux/ubuntu jammy-cran40/" \
+        > /etc/apt/sources.list.d/cran.list && \
     apt-get update && \
-    apt-get upgrade -y && \
-    apt-get install -y \
-    r-base \
-    r-base-core \
-    r-base-dev \
-    r-recommended
+    apt-get install -y --no-install-recommends \
+        r-base \
+        r-base-core \
+        r-base-dev \
+        r-recommended
 # -----------------------------------
 # Install R packages
 RUN Rscript -e "options(repos='http://cran.rstudio.com/'); install.packages('devtools', clean=TRUE)"
